@@ -1,7 +1,7 @@
 # Smart Guided Troubleshooting Engine: Chat + Simulator Design
 
 Date: 2026-09-21
-Status: Draft for review
+Status: Implemented (see plan amendment)
 Source of truth: `student_kit/` (official PDF contract, `schema.py`, `deeplinks.json`, `siis_responses.json`, `input.txt`, `sample_output.json`). Where this spec and the PDF disagree, the PDF wins.
 
 ## 1. Goal and scope
@@ -42,7 +42,7 @@ For each usable SIIS document, run the cold pipeline once and write validated pl
 4. Miss with `siis_response` supplied: run the cold pipeline (2.2 steps 1-5), cache, return.
 5. Miss with no `siis_response`: return `contexts: []` with `meta.fallback = "no_match"`. If the cache is empty for that domain, use `"no_siis_context"`.
 
-Lookup score is `0.5 * cosine + 0.5 * token containment` against every stored key (the original query, its paraphrases, the plan title, and each action name). The default threshold is 0.30. Measured on held-out paraphrases with the dependency-free hashed embedding: 8 of 14 hit the right plan, 3 hit a wrong plan, 0 of 6 unrelated queries hit anything. The 80% paraphrase target is therefore not met by this version, and the benchmark reports the real figure rather than tuning fixtures to pass. Closing the gap is the purpose of the embedding fine-tune.
+Lookup is cosine similarity between the query embedding and every stored key: the original query, its paraphrases, and one "action name + first step" key per action. The default model is `sentence-transformers/all-mpnet-base-v2` with threshold 0.45; both are configuration (`EMBEDDING_MODEL`, `SIMILARITY_THRESHOLD`), so a model trained locally is a drop-in. The dependency-free hashed embedding stays as a fast test fallback (`EMBEDDING_MODEL=hash`) but reaches only 8 of 14 on the first held-out set. Measured with the default: 13 of 14 and 12 of 14 on two independent held-out sets (25 of 28, 89%), 0 of 12 unrelated queries answered, hit P95 31 ms, cold-build P95 253 ms. The second set was written before any model or scoring choice was made, and the configuration was chosen using the first set only.
 
 ### 2.4 Validators (programmatic, application layer)
 Applied to every plan entering or leaving the cache:

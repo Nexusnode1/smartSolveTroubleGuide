@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Amendment (2026-09-22).** The hashed embedder measured 8 of 14 paraphrases, below the 80% target. Execution added a pretrained embedder behind the existing seam: `app/retrieval/st_embedder.py`, `EMBEDDING_MODEL` and `SIMILARITY_THRESHOLD` in `app/config.py`, cosine-only lookup with numpy in `plan_cache.py`, and one extra cache key per action (name plus first step). Where Tasks 7, 8, and 12 below differ, the code in the repository wins. Also added: a second held-out set (`tests/fixtures/paraphrases_holdout.json`), `tests/test_acceptance.py` (80% hit rate, 300 ms hit and 8 s cold P95, local-model loading), `scripts/dev.ps1`, `scripts/export_training_pairs.py`, and `docs/training-integration.md`. Result: 25 of 28 held-out paraphrases correct, 0 of 12 unrelated queries answered.
+
 **Goal:** A web chat where a user types a vague Galaxy complaint and gets an ordered, validated troubleshooting plan whose auto steps have an **Open** button that drives an on-page phone simulator.
 
 **Architecture:** A rules-only FastAPI engine turns official SIIS text into plans offline (parse sections, extract imperative steps, match each step's tapped UI label exactly to a catalog deeplink, order auto, manual, critical, validate) and serves them from a persistent semantic cache. A Vite + React chat calls `POST /v1/troubleshoot` and renders the plan; the Open button feeds a pure-function simulator. The embedder and the relevance gate each sit behind one function so the later embedding fine-tune is a swap, not a rewrite.

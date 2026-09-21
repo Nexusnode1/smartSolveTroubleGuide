@@ -1,48 +1,42 @@
 # Smart Guided Troubleshooting Engine
 
-Initial bootstrap for Samsung Prism Hackathon Theme 2. The official Theme 2 PDF and starter datasets were not present when this skeleton was created, so no troubleshooting behavior has been implemented.
+Turns a vague Galaxy complaint into an ordered, validated plan with deeplinks, and shows it in a chat with a phone simulator.
 
-## Architecture
+## Run it
 
-The intended flow is query enrichment → structure extraction → cache → deeplink mapping → sequencing → validation → cache update → REST API → frontend. See [ARCHITECTURE.md](ARCHITECTURE.md). These are implementation placeholders until verified against the official materials.
+One-time setup (Python 3.11+ and Node 20):
 
-## Layout
+    py -3.11 -m venv .venv
+    .\.venv\Scripts\Activate.ps1
+    pip install -r requirements.txt
+    cd frontend; npm install; cd ..
 
-```text
-smartSolveTroubleGuide/
-├── app/              # FastAPI application and future pipeline modules
-├── data/             # original (immutable), processed, and sample data
-├── frontend/         # reserved for React
-├── scripts/          # future data/benchmark utilities
-└── tests/            # pytest suite
-```
+Then, from the project root:
 
-## Requirements and setup
+    .\scripts\dev.ps1
 
-Use Python 3.11 or later.
+This starts the API (port 8000) and the chat UI (port 5173) and opens the browser. The first start downloads the embedding model (about 420 MB) and takes a minute; later starts take about 20 seconds.
 
-Windows PowerShell:
+Try: "touch is laggy and my taps register late", "my phone screen is cracked", "screen stays black and the phone will not turn on". Press **Open** on an auto step and the phone simulator shows the Settings screen it points to.
 
-```powershell
-py -3.11 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
+## Check the criteria
 
-On macOS/Linux, activate with `source .venv/bin/activate` after creating the environment. Run tests with `pytest`.
+    pytest                          # all tests, including the 80% / 300 ms acceptance tests
+    python scripts/benchmark.py     # measures and writes metrics.md
 
 ## API
 
-Start the server, then call:
+    GET  /health                 200 {"status":"ok"} once ready, else 503
+    POST /v1/troubleshoot        {"query": "...", "siis_response": "<optional raw text>"}
 
-```text
-GET  http://127.0.0.1:8000/health
-POST http://127.0.0.1:8000/api/v1/troubleshoot
-```
+## Your own model later
 
-The health endpoint returns `{"status":"ok"}`. The troubleshoot endpoint accepts `{"query":"..."}` and deliberately returns a marked placeholder; it does not produce a troubleshooting plan.
+See `docs/training-integration.md`: export training pairs, fine-tune, evaluate with `--embedding-model`, then set `EMBEDDING_MODEL`.
 
-## Current status and next step
+## Layout
 
-The project is importable and API-wired only. `data/original/`, `data/processed/`, and `data/samples/` are intentionally empty because no official datasets were supplied. Add the official Theme 2 PDF, query/response data, deeplink catalog, and schema without altering originals; then derive `PROJECT_SPEC.md` and implement the pipeline one verified stage at a time.
+    app/services/   siis_parser, key_matcher, plan_builder, plan_cache, troubleshooting_service
+    app/retrieval/  embeddings (hash fallback), st_embedder (sentence-transformers, local models)
+    frontend/       Vite + React chat, plan card, phone simulator
+    scripts/        dev.ps1, build_plans.py, benchmark.py, export_training_pairs.py
+    docs/           design spec, implementation plan, training guide

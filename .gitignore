@@ -41,3 +41,4 @@ data/processed/plan_cache.json
 frontend/node_modules/
 frontend/dist/
 /models/
+data/processed/training_pairs.jsonl
