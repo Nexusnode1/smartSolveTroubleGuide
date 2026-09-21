@@ -114,7 +114,7 @@ _MULTI_SCREEN = re.compile(
     re.IGNORECASE,
 )
 _ORDER = {"auto": 0, "manual": 1, "critical": 2}
-_FALLBACK_MARKER_FIELDS = ("fallback", "fallback_marker", "mapper_fallback")
+_GOAL = re.compile(r"^Follow these steps to perform this .+ (?:Troubleshooting|Configuration)$")
 
 
 def _catalog_entries(catalog: Mapping[str, Any] | Iterable[Mapping[str, Any]] | None) -> list[Mapping[str, Any]]:
@@ -173,18 +173,6 @@ def _scan_urls(value: Any, path: tuple[str, ...], errors: list[str]) -> None:
             _scan_urls(child, (*path, str(index)), errors)
 
 
-def _fallback_marker(raw: Mapping[str, Any]) -> bool:
-    """Require an explicit mapper marker for the documented dummy URI."""
-    if raw.get("is_fallback") is True or raw.get("isFallback") is True:
-        return True
-    return any(raw.get(field) == "dummy_positive" for field in _FALLBACK_MARKER_FIELDS)
-
-
-def _raw_actionable(raw_group: Mapping[str, Any]) -> Mapping[str, Any] | None:
-    value = raw_group.get("actionableDeeplink")
-    return value if isinstance(value, Mapping) else None
-
-
 def _sentence_case_title(title: str) -> bool:
     """Require an initial capital and lowercase-starting later words.
 
@@ -228,10 +216,10 @@ def _validate_plan_rules(
         errors.append("contexts must be a non-empty list")
         return errors
 
-    for goal_index, (goal, raw_goal) in enumerate(zip(parsed.contexts, raw_contexts)):
+    for goal_index, goal in enumerate(parsed.contexts):
         prefix = f"contexts[{goal_index}]"
-        if not goal.goal.strip():
-            errors.append(f"{prefix}.goal must be non-empty")
+        if not _GOAL.match(goal.goal.strip()):
+            errors.append(f"{prefix}.goal must read 'Follow these steps to perform this <Topic> Troubleshooting' or 'Configuration'")
         if not 2 <= len(_WORD.findall(goal.title)) <= 3:
             errors.append(f"{prefix}.title must contain 2 to 3 words")
         elif not _sentence_case_title(goal.title):
@@ -240,7 +228,6 @@ def _validate_plan_rules(
             errors.append(f"{prefix}.actions must be non-empty")
 
         previous_priority = -1
-        raw_actions = raw_goal.get("actions", []) if isinstance(raw_goal, Mapping) else []
         for action_index, action in enumerate(goal.actions):
             action_prefix = f"{prefix}.actions[{action_index}]"
             if not _WORD.findall(action.actionName):
@@ -262,7 +249,6 @@ def _validate_plan_rules(
                 errors.append(f"{action_prefix} violates auto/manual/critical ordering")
             previous_priority = priority
 
-            raw_action = raw_actions[action_index] if action_index < len(raw_actions) and isinstance(raw_actions[action_index], Mapping) else {}
             for group_index, group in enumerate(action.stepGroups):
                 group_prefix = f"{action_prefix}.stepGroups[{group_index}]"
                 if not group.steps:
@@ -271,17 +257,18 @@ def _validate_plan_rules(
                     if _MULTI_STEP.search(step):
                         errors.append(f"{group_prefix}.steps[{step_index}] contains multiple interactions")
 
-                raw_groups = raw_action.get("stepGroups", []) if isinstance(raw_action, Mapping) else []
-                raw_group = raw_groups[group_index] if group_index < len(raw_groups) and isinstance(raw_groups[group_index], Mapping) else {}
                 actionable = group.actionableDeeplink
-                raw_link = _raw_actionable(raw_group)
                 if action.category is _ActionCategory.manual and actionable is not None:
                     errors.append(f"{group_prefix}.actionableDeeplink is forbidden for manual actions")
                 if actionable is not None:
                     uri = actionable.deeplink
                     if uri == "bixby://dummy_positive":
-                        if not _fallback_marker(raw_link or {}):
-                            errors.append(f"{group_prefix}.dummy_positive requires mapper fallback marker")
+                        placeholder_words = (
+                            len(_WORD.findall(actionable.description)),
+                            len(_WORD.findall(actionable.message or "")),
+                        )
+                        if not all(5 <= count <= 7 for count in placeholder_words):
+                            errors.append(f"{group_prefix}.dummy_positive description and message must each contain 5 to 7 words")
                     elif uri not in actionable_uris:
                         errors.append(f"{group_prefix}.actionableDeeplink is not an exact catalog URI")
                     # URI membership above is authoritative; metadata is

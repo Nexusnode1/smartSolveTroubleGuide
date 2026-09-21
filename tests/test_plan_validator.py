@@ -39,7 +39,7 @@ def _valid_plan() -> dict:
     return {
         "query_variations": [f"battery troubleshooting variation {i}" for i in range(8)],
         "contexts": [{
-            "goal": "Follow these steps to troubleshoot battery performance",
+            "goal": "Follow these steps to perform this Battery Troubleshooting",
             "title": "Battery performance",
             "score": 0.95,
             "actions": [_action(deeplink={
@@ -76,14 +76,13 @@ def test_valid_manual_action_has_no_deeplink() -> None:
     assert _result(plan).valid is True
 
 
-def test_valid_dummy_positive_requires_mapper_fallback_marker() -> None:
+def test_valid_dummy_positive_with_self_written_text() -> None:
     plan = _valid_plan()
     plan["contexts"][0]["actions"][0]["stepGroups"][0]["actionableDeeplink"] = {
         "deeplink": "bixby://dummy_positive",
-        "description": "Generic placeholder for a Settings screen.",
-        "message": "Open the relevant Settings screen",
+        "description": "Opens the Storage Settings screen",
+        "message": "Open the Storage screen in Settings",
         "originalType": "placeholder",
-        "fallback": "dummy_positive",
     }
     assert _result(plan).valid is True
 
@@ -199,7 +198,7 @@ def test_manual_action_with_deeplink_is_rejected() -> None:
     assert _result(plan).valid is False
 
 
-def test_dummy_positive_without_fallback_marker_is_rejected() -> None:
+def test_dummy_positive_with_wrong_word_count_is_rejected() -> None:
     plan = _valid_plan()
     plan["contexts"][0]["actions"][0]["stepGroups"][0]["actionableDeeplink"]["deeplink"] = "bixby://dummy_positive"
     assert _result(plan).valid is False
@@ -218,3 +217,16 @@ def test_validation_is_deterministic() -> None:
     first = _result(_valid_plan())
     second = _result(_valid_plan())
     assert first == second
+
+
+@pytest.mark.parametrize("goal", ["Fix my battery", "Follow these steps to troubleshoot battery performance", "Follow these steps to perform this Troubleshooting"])
+def test_goal_must_follow_official_syntax(goal: str) -> None:
+    plan = _valid_plan()
+    plan["contexts"][0]["goal"] = goal
+    assert _result(plan).valid is False
+
+
+def test_goal_configuration_form_is_accepted() -> None:
+    plan = _valid_plan()
+    plan["contexts"][0]["goal"] = "Follow these steps to perform this Battery Configuration"
+    assert _result(plan).valid is True
