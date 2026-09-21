@@ -9,17 +9,10 @@ from pydantic import BaseModel, Field
 
 
 class TroubleshootRequest(BaseModel):
-    """Input accepted by the bootstrap troubleshooting endpoint."""
+    """Body of POST /v1/troubleshoot (PDF section 5)."""
 
     query: str = Field(min_length=1, description="User-provided troubleshooting query.")
-
-
-class PlaceholderTroubleshootResponse(BaseModel):
-    """Explicit non-plan response used until the official schema is available."""
-
-    status: str
-    detail: str
-    query: str
+    siis_response: str | None = Field(default=None, description="Optional raw SIIS knowledge text.")
 
 
 class QueryEnrichmentResult(BaseModel):
