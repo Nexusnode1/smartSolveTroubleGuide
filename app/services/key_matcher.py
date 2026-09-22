@@ -40,15 +40,28 @@ def normalize_label(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
 
-def tap_targets(steps: Iterable[str]) -> list[str]:
-    """Return the UI labels tapped by ``steps`` in order, excluding action buttons."""
-    targets: list[str] = []
+def _tap_candidates(steps: Iterable[str]) -> list[tuple[str, str]]:
+    """Return (raw, trimmed) label pairs for every tap found in ``steps``, in order.
+
+    ``raw`` keeps whatever followed the tap verb up to the next punctuation mark;
+    ``trimmed`` is that same span with a likely trailing clause ("...to disable it")
+    cut off. Matching prefers ``trimmed`` but falls back to ``raw`` so a catalog key
+    that itself contains a connector word ("Put unused apps to sleep") is not lost
+    to over-eager trimming.
+    """
+    candidates: list[tuple[str, str]] = []
     for step in steps:
         for match in _TAP.finditer(step):
-            label = _TRIM.sub("", match.group(1)).strip()
-            if label and normalize_label(label) not in _NOT_A_SCREEN:
-                targets.append(label)
-    return targets
+            raw = match.group(1).strip()
+            trimmed = _TRIM.sub("", raw).strip()
+            if trimmed and normalize_label(trimmed) not in _NOT_A_SCREEN:
+                candidates.append((raw, trimmed))
+    return candidates
+
+
+def tap_targets(steps: Iterable[str]) -> list[str]:
+    """Return the UI labels tapped by ``steps`` in order, excluding action buttons."""
+    return [trimmed for _, trimmed in _tap_candidates(steps)]
 
 
 @dataclass(frozen=True)
@@ -71,12 +84,30 @@ class KeyIndex:
                 self._by_key[normalize_label(key)].append(entry)
 
     def find(self, steps: Sequence[str], context: str) -> DeeplinkChoice | None:
-        """Pick the entry for the last tapped label that exists in the catalog."""
-        for target in reversed(tap_targets(steps)):
-            entries = self._by_key.get(normalize_label(target))
+        """Pick the entry for the last tapped label that exists in the catalog.
+
+        A label can be trimmed short of a longer real key when the key itself contains
+        a connector word ("Put unused apps **to** sleep"): the generic trailing-clause
+        trimmer cuts at that word before the exact lookup ever runs. When the trimmed
+        label has no exact match, this also checks whether the *untrimmed* tap text
+        extends exactly one catalog key by whole words, grounding the recovery in what
+        the sentence actually said rather than in catalog vocabulary alone (so a bare
+        "Storage" does not get credited to the unrelated, longer key "Storage Share").
+        """
+        for raw, trimmed in reversed(_tap_candidates(steps)):
+            entries = self._by_key.get(normalize_label(trimmed)) or self._extended_match(normalize_label(raw))
             if entries:
-                return DeeplinkChoice(_pick(entries, context), target)
+                return DeeplinkChoice(_pick(entries, context), trimmed)
         return None
+
+    def _extended_match(self, normalized_raw: str) -> list[Mapping[str, Any]] | None:
+        """Return the entries of the one stored key equal to, or extended by, ``normalized_raw``."""
+        candidates = [
+            entries
+            for key, entries in self._by_key.items()
+            if normalized_raw == key or normalized_raw.startswith(key + " ")
+        ]
+        return candidates[0] if len(candidates) == 1 else None
 
 
 def _pick(entries: Sequence[Mapping[str, Any]], context: str) -> Mapping[str, Any]:

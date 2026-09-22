@@ -52,3 +52,20 @@ def test_the_placeholder_is_never_a_match(index, catalog):
     for entry in catalog:
         choice = index.find([f"Tap {entry.get('message') or 'Nothing'}."], "")
         assert choice is None or choice.entry["deeplink"] != DUMMY_URI
+
+
+def test_a_multi_word_label_containing_a_connector_word_is_not_truncated(index):
+    # "Put unused apps to sleep" is the catalog's own label; the trailing-clause
+    # trimmer must not mistake the "to" inside the label for a trailing clause.
+    steps = ["Go to Settings.", "Tap Battery.", "Tap Put unused apps to sleep."]
+    choice = index.find(steps, "")
+    assert choice.entry["id"] == "DL-0544"
+
+
+def test_a_longer_real_label_wins_over_a_shorter_one_that_shadows_it(index):
+    # An earlier step taps a real, shorter label ("Battery"); the later, more specific
+    # step ("Put unused apps to sleep") is what the instruction is actually about and
+    # must be preferred, even though its own trimmed candidate is only "Put unused apps".
+    steps = ["Tap Battery and device care.", "Tap the switch next to Put unused apps to sleep to enable it."]
+    choice = index.find(steps, "enable it")
+    assert choice.entry["id"] == "DL-0417"
