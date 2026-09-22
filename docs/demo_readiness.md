@@ -101,21 +101,25 @@ is the semantic cache lookup specifically, which *is* dense-embedding-based.
 - Three `auto` actions with real, verified deeplinks (`Enable Power saving`, `Enable Adaptive Display`, `View Put unused apps to sleep`), one `critical` (restart, no deeplink).
 - **Demonstrates**: the pipeline is not Display-specific -- run live, on a domain the official 20 rows never cover, with the full cold pipeline (not a shortcut), producing a fully schema-valid, catalog-backed plan.
 
-## 4. UI/demo gaps (recommendations; only one code change made, see below)
+## 4. UI/demo gaps (recommendations; two code changes made so far, see below)
 
-- **Real, fixed this task**: the app's own default example chip, *"My screen is cracked and
+- **Real, fixed**: the app's own default example chip, *"My screen is cracked and
   flickers"*, hit a camera-video-flicker plan whose steps ("disable Super steady mode",
   "adjust shutter speed in Pro Video mode") visibly have nothing to do with a cracked screen --
   the first thing a judge would see if they clicked it. This was a static string in
   `frontend/src/App.tsx`'s `EXAMPLES` array, not core logic; replaced with `"My screen is
-  cracked"` (verified: correctly hits `Cracked bleeding screen`). No other code was touched.
-- **Recommendation, not implemented**: the browser UI has no way to supply `siis_response`, so
-  demo query 5 above (the cross-domain, cold-path capability) **cannot be shown through the
-  browser at all** -- only via `curl`/Postman/the API directly. This is a real gap for a
-  judging context that may only look at the UI. Given the "no speculative features" constraint,
-  the concrete, minimal fix (a collapsed "paste raw troubleshooting text (cold path demo)"
-  textarea, wired to the `siis_response` field already accepted by the API) is recommended for
-  before the actual demo, not implemented now.
+  cracked"` (verified: correctly hits `Cracked bleeding screen`).
+- **Real, fixed (later task)**: the browser UI had no way to supply `siis_response`, so demo
+  query 5 (the cross-domain, cold-path capability) could not be shown through the browser at
+  all -- only via `curl`/Postman/the API directly. Fixed with a collapsed "paste raw
+  troubleshooting text (cold path demo)" `<details>` panel wired to the existing
+  `siis_response` field, plus a "Fill in the Battery example" button that fills in the exact,
+  verbatim `battery_drain_fast` fixture text. Verified end-to-end: real backend, real Vite dev
+  server, a real (Playwright-driven) headless Chromium browser -- request reaches the backend
+  with `siis_response` present, response renders, and the meta strip reads "cold path (raw text
+  supplied)" instead of "cache hit"/"cache miss" for that reply. Clearing the textarea and
+  sending a normal query afterward correctly omits `siis_response` again (no state leakage).
+  `frontend/src/App.tsx`, `api.ts`, `App.test.tsx`, `styles.css`.
 - **Recommendation, not implemented**: the meta strip shows latency/cache-hit/model/cost but
   not `query_variations` count or the plan's `score`; surfacing `score` next to the title would
   make the relevance gate's behavior visible to a judge without opening dev tools.
@@ -124,34 +128,47 @@ is the semantic cache lookup specifically, which *is* dense-embedding-based.
 
 ## 5. Demo script (2-3 minutes)
 
-**0:00-0:20 -- Setup.** Have `.\scripts\dev.ps1` already running before the demo starts (model
+Walks through all five verified queries from section 2-3, in order: Standard -> Multi-step ->
+Manual -> Paraphrase -> Battery cold-path.
+
+**0:00-0:15 -- Setup.** Have `.\scripts\dev.ps1` already running before the demo starts (model
 load takes about 15-20 s if the model is already cached locally, longer on a first-ever run --
 do not do this live). Open the browser tab.
 
-**0:20-0:50 -- Standard flow.** Click the *"Touch responses are laggy"* chip.
+**0:15-0:40 -- Standard flow (query 1).** Click the *"Touch responses are laggy"* chip.
 *Say:* "The user never says 'Settings' or names a screen -- just describes the symptom." Point
 out the ordered actions: auto steps first (with real one-tap Open buttons), then manual, then
 critical (Factory Data Reset) last, with the warning banner. Click **Open** on the first auto
 step; the phone simulator on the right shows the real, catalog-verified Settings screen
 (Touch sensitivity, toggled on).
 
-**0:50-1:20 -- Semantic matching.** Type *"my phone screen is black and will not turn on"* by
-hand (not a chip). *Say:* "This exact sentence isn't the training data -- the semantic cache
-is matching it by meaning." Point at the meta strip: cache hit, no LLM call, ~$0.00 cost,
+**0:40-1:05 -- Multi-step flow, one query, three categories (query 2).** Type *"My Samsung
+tablet screen flashes and then goes completely blank whenever I tap to open an email in
+Gmail"*. *Say:* "One complaint, one query -- and the engine still returns a fully ordered plan
+spanning all three categories." Point out: one `auto` action with a real Wi-Fi deeplink, two
+`manual` steps (check on a PC, review credentials -- correctly no deeplink, these aren't
+Settings actions), then two `critical` steps (clear cache, Safe Mode) with the warning banner
+and, again, no deeplink.
+
+**1:05-1:25 -- Honest "no deeplink" case (query 3).** Click the *"My screen is cracked"* chip.
+*Say:* "For a genuinely physical problem, it doesn't invent a Settings screen -- both steps
+route to Samsung Repair Services, with no fabricated deeplink." (Optional, if time: point out
+the manual/critical categories never carry an actionable deeplink at all -- that's enforced by
+the schema validator, not just convention.)
+
+**1:25-1:50 -- Semantic matching (query 4).** Type *"my phone screen is black and will not turn
+on"* by hand (not a chip). *Say:* "This exact sentence isn't the training data -- the semantic
+cache is matching it by meaning." Point at the meta strip: cache hit, no LLM call, ~$0.00 cost,
 latency in single-digit milliseconds.
 
-**1:20-1:50 -- Honest "no deeplink" case.** Click the *"My screen is cracked"* chip. *Say:*
-"For a genuinely physical problem, it doesn't invent a Settings screen -- both steps route to
-Samsung Repair Services, with no fabricated deeplink." (Optional, if time: point out the
-manual/critical categories never carry an actionable deeplink at all -- that's enforced by the
-schema validator, not just convention.)
-
-**1:50-2:30 -- Beyond Display (cold path).** Switch to a terminal/Postman window prepared in
-advance. Run the battery-drain cold-path request (query 5 above) against
-`POST /v1/troubleshoot` with `siis_response` supplied. *Say:* "The official sample data is all
-about the display, but the same pipeline handles Battery, Camera, and Performance live, with
-no retraining -- this is a full cold build, not a cache hit," pointing at `meta.cache_hit:
-false` and the three real, verified deeplinks in the response.
+**1:50-2:30 -- Beyond Display, cold path (query 5).** Expand "paste raw troubleshooting text
+(cold path demo)" in the browser UI, click "Fill in the Battery example" (or, if using a
+terminal/Postman window prepared in advance, run the same request against
+`POST /v1/troubleshoot` with `siis_response` supplied), and submit. *Say:* "The official sample
+data is all about the display, but the same pipeline handles Battery, Camera, and Performance
+live, with no retraining -- this is a full cold build, not a cache hit," pointing at the meta
+strip's "cold path (raw text supplied)" label (or `meta.cache_hit: false` in Postman) and the
+three real, verified deeplinks in the response.
 
 **2:30-2:45 -- Close.** One sentence on validation: "Every one of these responses passed a
 firewall that checks schema, word counts, zero URL leaks, and that every deeplink is copied
@@ -174,7 +191,7 @@ retrieval is used instead, only for the semantic cache lookup box.
 | --- | --- | --- |
 | README | Ready | `README_PROJECT.md` updated this task (documentation only) to list every doc/script/fixture added since it was first written |
 | Setup commands | Ready | `README_PROJECT.md`'s "Run it" section, verified working this session (`npm test`, `npm run build`, backend `pytest`) |
-| Tests | Ready | `pytest -q` -> see Final report below; `npm test` -> 14/14 passing |
+| Tests | Ready | `pytest -q` -> see Final report below; `npm test -- --run` -> 18/18 passing (includes the cold-path UI tests added after this table was first written) |
 | Benchmark metrics | Ready, clearly scoped | `metrics.md`, `docs/siis_paraphrase_baseline_benchmark.md`, `docs/cross_domain_generalization.md`, `docs/camera_hard_negative_analysis.md` -- all real, measured, with stated sample sizes and limitations |
 | Docker status | Documented as unverified | `docs/docker_latency_benchmark.md` states plainly that Docker itself could not be built/run in this environment; local-process latency (not container latency) is reported and clearly labeled as such |
 | Known limitations | Ready | Consolidated list below; each has its own doc |
