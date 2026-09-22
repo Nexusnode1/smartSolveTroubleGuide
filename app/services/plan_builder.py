@@ -15,7 +15,7 @@ from app.services.action_ordering import ordered_values
 from app.services.key_matcher import DUMMY_URI, KeyIndex, tap_targets
 from app.services.plan_validator import validate_plan
 from app.services.relevance import relevance
-from app.services.siis_parser import Section, is_imperative, parse_sections
+from app.services.siis_parser import Section, embedded_title, is_imperative, parse_sections
 from app.services.variations import generate_variations
 
 _WORD = re.compile(r"[A-Za-z0-9]+(?:['-][A-Za-z0-9]+)*")
@@ -106,11 +106,23 @@ def _placeholder_link(label: str) -> dict[str, Any]:
 
 
 def _build_action(section: Section, index: KeyIndex) -> dict[str, Any] | None:
+    """Build one action, resolving its deeplink before deciding whether it is critical.
+
+    The catalog only ever models View/Toggle/Update-value actions (confirmed: it has no
+    entry for an immediate one-tap destructive action like a live factory reset or restart).
+    So whenever a step group resolves to a real catalog entry, that action is, by
+    construction, a safe Settings screen -- even when the catalog's own setting name
+    contains a word the critical-keyword scan would otherwise flag, such as the toggle
+    "Restart the device when needed" or the view-only "Restart on schedule". Checking the
+    catalog match first, and only falling back to the keyword scan when there is none,
+    keeps genuinely disruptive, physical-button instructions (which never resolve to a
+    catalog entry) critical exactly as before.
+    """
     steps = list(section.steps)
     if not steps:
         return None
-    critical = bool(_CRITICAL.search(" ".join([section.heading, *steps])))
-    choice = None if critical else index.find(steps, section.body)
+    choice = index.find(steps, section.body)
+    critical = choice is None and bool(_CRITICAL.search(" ".join([section.heading, *steps])))
     group: dict[str, Any] = {"steps": steps, "actionableDeeplink": None, "validationDeeplink": None}
     if critical:
         category = "critical"
@@ -158,7 +170,15 @@ class PlanBuilder:
         self._index = KeyIndex(self.catalog)
 
     def build(self, query: str, content: str, title: str = "") -> PlanBuild | None:
-        """Return a plan, or ``None`` when the text has no usable, relevant steps."""
+        """Return a plan, or ``None`` when the text has no usable, relevant steps.
+
+        ``title`` defaults to "" for callers with no separate title field (the public
+        troubleshoot() API has none). In that case the article's own embedded title is
+        recovered from its "<categories> <Title> ( <categories>): " prefix when present,
+        so a cold siis_response is not silently reduced to a generic "Device Issue" topic
+        or a redundant one derived from its first heading alone.
+        """
+        title = title or embedded_title(content) or ""
         sections = parse_sections(content, title)
         article = " ".join(f"{s.heading} {s.body}" for s in sections)
         score = relevance(query, article, title)

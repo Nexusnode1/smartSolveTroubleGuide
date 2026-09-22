@@ -33,8 +33,8 @@ No ground-truth plans were supplied, so step accuracy and deeplink relevance wer
 | Execution Path | Target (P95) | P50 (ms) | P95 (ms) | Result |
 | :--- | :--- | :--- | :--- | :--- |
 | Cache hit - exact query match | <= 300 ms | 0.1 | 0.1 | met |
-| Cache hit - unseen semantic paraphrase | <= 300 ms | 26.7 | 28.9 | met |
-| Cold query - full pipeline extraction & mapping | <= 8000 ms | 244.4 | 250.9 | met |
+| Cache hit - unseen semantic paraphrase | <= 300 ms | 25.2 | 30.7 | met |
+| Cold query - full pipeline extraction & mapping | <= 8000 ms | 241.0 | 251.8 | met |
 
 ---
 
@@ -57,7 +57,7 @@ No ground-truth plans were supplied, so step accuracy and deeplink relevance wer
 | :--- | :--- | :--- | :--- | :--- |
 | Baseline: Full LLM Deeplink Mapping | not run | not run | not run | No LLM in this version. |
 | Variant A: Hybrid BM25 + Dense Embedding Retrieval | not scored | not run | $0.00 | Tried on real sections and rejected: min-max fusion scores the top hit near 1.0 even for unrelated screens (for example "Restart in Safe Mode" against "One-handed mode"). |
-| Variant B: Pure Rules-Based Deeplink Mapping | not scored | 250.9 ms cold | $0.00 | Exact match of the tapped UI label to the catalog's `validation.key`. This is what ships. |
+| Variant B: Pure Rules-Based Deeplink Mapping | not scored | 251.8 ms cold | $0.00 | Exact match of the tapped UI label to the catalog's `validation.key`. This is what ships. |
 | Cache lookup: hashed bag-of-words embedding | n/a | fast | $0.00 | 8 of 14 paraphrases on the first set. Fallback only (`EMBEDDING_MODEL=hash`). |
 | Cache lookup: all-mpnet-base-v2 + action-content keys | n/a | see section 3 | $0.00 | Default. Meets the hit-rate target on both held-out sets. |
 

@@ -105,6 +105,20 @@ class PlanCache:
             self._keys.append(_Key(entry_id, text, vector))
         self._matrix = None
 
+    def add_lookup_keys(self, entry_id: str, texts: Iterable[str]) -> None:
+        """Add extra lookup keys to an already-validated entry.
+
+        Unlike ``add``, this does not re-run schema validation: ``texts`` are supplementary
+        phrasings (for example hand-written evaluation paraphrases) rather than the official
+        API's ``query_variations`` field, which has its own separate 8-10-item rule.
+        """
+        if entry_id not in self._entries:
+            raise KeyError(f"no entry {entry_id!r}; call add() first")
+        for text in dict.fromkeys(t for t in (normalize_query(x) for x in texts) if t):
+            self._exact.setdefault(text, entry_id)
+            self._keys.append(_Key(entry_id, text, self._model.embed(text)))
+        self._matrix = None
+
     def _key_matrix(self) -> np.ndarray:
         if self._matrix is None:
             matrix = np.asarray([key.vector for key in self._keys], dtype=np.float32)
@@ -129,6 +143,32 @@ class PlanCache:
         if float(scores[best]) < self.threshold:
             return None
         return CacheHit(self._entries[self._keys[best].entry_id], round(float(scores[best]), 4), False)
+
+    def top_matches(self, query: str, k: int = 5) -> list[CacheHit]:
+        """Return up to ``k`` distinct cached plans ranked by similarity to ``query``.
+
+        Unlike :meth:`lookup`, this ignores ``self.threshold`` and never uses the exact-match
+        fast path: it always ranks every stored key by cosine similarity first, then keeps
+        each entry's best-scoring key, so a query with several keys pointing at the same plan
+        (canonical query, paraphrases, action names) counts as one candidate, not several. This
+        is for reporting metrics such as Recall@k and MRR, where the point is to see how the
+        candidate ranks, not just whether it is the single best match above a cutoff.
+        """
+        normalized = normalize_query(query)
+        if not normalized or not self._keys:
+            return []
+        vector = np.asarray(self._model.embed(normalized), dtype=np.float32)
+        norm = float(np.linalg.norm(vector))
+        if norm == 0.0:
+            return []
+        scores = self._key_matrix() @ (vector / norm)
+        best_per_entry: dict[str, float] = {}
+        for key, score in zip(self._keys, scores):
+            value = float(score)
+            if value > best_per_entry.get(key.entry_id, -1.0):
+                best_per_entry[key.entry_id] = value
+        ranked = sorted(best_per_entry.items(), key=lambda pair: pair[1], reverse=True)[:k]
+        return [CacheHit(self._entries[entry_id], round(score, 4), False) for entry_id, score in ranked]
 
     def save(self, path: Path) -> None:
         """Write all entries to ``path`` as JSON."""

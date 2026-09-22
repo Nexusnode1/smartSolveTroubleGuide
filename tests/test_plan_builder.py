@@ -125,3 +125,82 @@ def test_building_is_deterministic(builder, siis_rows):
     first = builder.build(siis_rows[0]["original_query"], siis["content"], siis["title"])
     second = builder.build(siis_rows[0]["original_query"], siis["content"], siis["title"])
     assert first == second
+
+
+def test_no_title_argument_still_recovers_the_real_title_when_content_has_intro_prose(builder, siis_rows):
+    # Regression: the public troubleshoot() API has no title field. row_7's content has a
+    # lead-in sentence before its first heading, which used to make the title/goal fall
+    # back to the generic "Device Issue" when no title argument was given at all.
+    siis = next(r for r in siis_rows if r["id"] == "row_7")["siis_response"]
+    build = builder.build("how do I use two apps on screen at once", siis["content"])
+    assert build is not None and build.errors == ()
+    assert build.response["contexts"][0]["title"] != "Device issue"
+
+
+def test_no_title_argument_does_not_duplicate_troubleshooting_when_content_starts_with_a_heading(catalog):
+    # Regression: content whose very first line is itself a heading ("# Battery draining
+    # quickly...") used to make the topic parser re-derive a shorter, redundant title from
+    # that heading's own words, producing goals like "...perform this Troubleshooting X
+    # Troubleshooting". Recovering the embedded title avoids re-deriving it at all.
+    content = (
+        "Smartphone,Others Mobile Battery draining quickly on your Galaxy phone "
+        "( Smartphone,Others Mobile): # Troubleshooting Fast Battery Drain\n"
+        "Let's go through some steps to extend your battery life.\n"
+        "## Turn On Power Saving\nGo to Settings. Tap Battery. Tap Power saving.\n"
+    )
+    build = PlanBuilder(catalog).build("my battery drains really fast", content)
+    assert build is not None and build.errors == ()
+    context = build.response["contexts"][0]
+    assert context["title"] == "Battery draining quickly"
+    assert context["goal"].count("Troubleshooting") == 1
+
+
+def test_a_toggle_setting_named_with_a_critical_keyword_is_auto_not_critical(catalog, catalog_by_id):
+    # "Restart the device when needed" is a benign auto-restart-schedule toggle (DL-0479/
+    # DL-0480), not an instruction to restart right now. The word "restart" inside the
+    # catalog's own setting name must not make this action critical, or drop its deeplink.
+    content = (
+        "Smartphone,Others Mobile Keep your Galaxy phone running smoothly "
+        "( Smartphone,Others Mobile): ## Turn On Restart The Device When Needed\n"
+        "Go to Settings. Tap Battery and device care. "
+        "Tap the switch next to Restart the device when needed to turn it on.\n"
+    )
+    build = PlanBuilder(catalog).build("keep my phone running smoothly", content)
+    assert build is not None and build.errors == ()
+    action = build.response["contexts"][0]["actions"][0]
+    assert action["category"] == "auto"
+    link = action["stepGroups"][0]["actionableDeeplink"]
+    assert link["deeplink"] == catalog_by_id["DL-0480"]["deeplink"]
+
+
+def test_an_onclickurl_view_setting_named_with_a_critical_keyword_is_also_auto(catalog, catalog_by_id):
+    # Same root issue, different originalType: "Inactivity restart" (DL-0124) only opens a
+    # settings screen (onClickURL); it does not restart anything by itself.
+    content = (
+        "Smartphone,Others Mobile Keep your Galaxy phone running smoothly "
+        "( Smartphone,Others Mobile): ## Check Inactivity Restart\n"
+        "Go to Settings. Tap Battery and device care. Tap Inactivity restart.\n"
+    )
+    build = PlanBuilder(catalog).build("keep my phone running smoothly", content)
+    assert build is not None and build.errors == ()
+    action = build.response["contexts"][0]["actions"][0]
+    assert action["category"] == "auto"
+    assert action["stepGroups"][0]["actionableDeeplink"]["deeplink"] == catalog_by_id["DL-0124"]["deeplink"]
+
+
+@pytest.mark.parametrize("text", [
+    "Press and hold the Power button, then tap Restart. Tap Restart again to confirm.",
+    "Navigate to Settings, search for and select Factory data reset, and then tap Factory data reset again. Tap Delete all.",
+    "Press and hold the Power button (or Side button) and the Volume down button at the same time. Touch and hold Power off, then tap Safe mode.",
+])
+def test_genuine_disruptive_instructions_remain_critical_with_no_deeplink(catalog, text):
+    # Regression guard for the fix above: an actual "do this destructive thing now"
+    # instruction has no catalog entry to resolve to (confirmed: the catalog only ever
+    # models View/Toggle/Update actions, never an immediate one-tap destructive action),
+    # so it must still be classified critical with no deeplink, exactly as before the fix.
+    content = f"Smartphone,Others Mobile Fix a stuck phone ( Smartphone,Others Mobile): ## Last Resort\n{text}\n"
+    build = PlanBuilder(catalog).build("my phone is stuck", content)
+    assert build is not None and build.errors == ()
+    action = build.response["contexts"][0]["actions"][0]
+    assert action["category"] == "critical"
+    assert action["stepGroups"][0]["actionableDeeplink"] is None

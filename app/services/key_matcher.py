@@ -29,9 +29,11 @@ _NOT_A_SCREEN = frozenset(
         "safe mode", "power off", "power", "recents", "home",
     }
 )
-_TURN_OFF = re.compile(r"\b(?:turn\s+off|disable|switch\s+off|toggle\s+off)\b", re.IGNORECASE)
+_TURN_OFF = re.compile(
+    r"\b(?:turn\s+(?:\w+\s+)?off|disable|switch\s+off|toggle\s+off)\b", re.IGNORECASE
+)
 _TURN_ON = re.compile(
-    r"\b(?:turn\s+on|enable|switch\s+on|toggle\s+on|switch\s+next\s+to)\b", re.IGNORECASE
+    r"\b(?:turn\s+(?:\w+\s+)?on|enable|switch\s+on|toggle\s+on|switch\s+next\s+to)\b", re.IGNORECASE
 )
 
 
@@ -93,6 +95,18 @@ class KeyIndex:
         extends exactly one catalog key by whole words, grounding the recovery in what
         the sentence actually said rather than in catalog vocabulary alone (so a bare
         "Storage" does not get credited to the unrelated, longer key "Storage Share").
+
+        KNOWN LIMITATION (see docs/cross_domain_generalization.md): when the last tap has
+        no catalog entry, this walks back to an earlier one in the same step group. That is
+        correct when the earlier tap is the real destination and the last one is just an
+        in-screen option on it (official row_21: "tap Navigation bar" -> "select Buttons"
+        must resolve to Navigation bar). It is wrong when the last tap was meant to be a
+        more specific destination that simply is not in the catalog (synthetic
+        "performance_optimize_one_tap": "Tap Battery and device care" -> "Tap Optimize now"
+        wrongly resolves to the parent "Battery" screen). These two shapes are not
+        distinguishable from the text alone with the current approach; fixing one
+        regresses the other, confirmed by testing both. Left as the safer, official-data-
+        proven behavior rather than trading a real-row regression for a synthetic-row fix.
         """
         for raw, trimmed in reversed(_tap_candidates(steps)):
             entries = self._by_key.get(normalize_label(trimmed)) or self._extended_match(normalize_label(raw))

@@ -4,7 +4,7 @@ import re
 
 import pytest
 
-from app.services.siis_parser import clean_siis_text, extract_steps, is_imperative, parse_sections
+from app.services.siis_parser import clean_siis_text, embedded_title, extract_steps, is_imperative, parse_sections
 
 
 def test_clean_removes_category_prefix_urls_and_markdown_links():
@@ -74,3 +74,23 @@ def test_real_garbled_article_keeps_only_the_clean_leading_part(siis_rows):
     sections = parse_sections(row["siis_response"]["content"], row["siis_response"]["title"])
     assert len(sections) == 1
     assert "Fingerprint" not in sections[0].body
+
+
+def test_embedded_title_recovers_the_articles_own_title_from_its_prefix():
+    content = "Smartphone,Others Mobile Battery draining quickly on your Galaxy phone ( Smartphone,Others Mobile): body text here."
+    assert embedded_title(content) == "Battery draining quickly on your Galaxy phone"
+
+
+def test_embedded_title_handles_a_category_name_with_an_internal_space():
+    content = "Smartphone,Others Mobile,Tablet Camera app closes or will not open ( Smartphone,Others Mobile,Tablet): body."
+    assert embedded_title(content) == "Camera app closes or will not open"
+
+
+def test_embedded_title_is_none_without_the_repeated_category_prefix():
+    assert embedded_title("Just some plain text with no category prefix at all.") is None
+
+
+def test_embedded_title_matches_every_official_row(siis_rows):
+    for row in siis_rows:
+        siis = row["siis_response"]
+        assert embedded_title(siis["content"]) == siis["title"], row["id"]

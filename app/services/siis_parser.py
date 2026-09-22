@@ -77,6 +77,29 @@ def clean_siis_text(content: str) -> str:
     return _URL.sub("", text).strip()
 
 
+def embedded_title(content: str) -> str | None:
+    """Recover the article's own title from its "<categories> <Title> ( <categories>): " prefix.
+
+    The category list appears twice, verbatim, around the title; that repetition (not any
+    assumption about what a category name looks like) is what lets this find the title
+    without a separately-supplied title field, which the public troubleshoot() API does not
+    have. Returns None if the prefix is not in this exact shape.
+    """
+    match = _CATEGORY_PREFIX.search(content[:800])
+    if not match:
+        return None
+    prefix = content[: match.start()]
+    paren = prefix.rfind(" (")
+    if paren == -1:
+        return None
+    categories = prefix[paren + 2 :].strip()
+    before = prefix[:paren]
+    if not categories or not before.startswith(categories):
+        return None
+    title = before[len(categories) :].strip()
+    return title or None
+
+
 def _clean_piece(piece: str) -> str:
     piece = piece.strip(" \t-*•:;,")
     for _ in range(3):
