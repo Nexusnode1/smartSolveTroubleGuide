@@ -221,6 +221,7 @@ No ground-truth plans were supplied, so step accuracy and deeplink relevance wer
 * Multi-intent complaints (row 19) are answered for the dominant intent only.
 * Rows 6 and 18 do not exist in `siis_responses.json`. Rows 16, 17, and 20 are refused by the relevance gate.
 * The official `sample_output.json` has action descriptions of 9 and 11 words, against the written 5 to 7 word rule; this engine follows the written rule.
+* All 20 official rows are Display complaints. Battery/Camera/Performance generalization is checked separately, against author-written test articles, in `tests/test_domain_generalization.py` (see `docs/domain-coverage.md`), not in the figures above.
 """
 
 

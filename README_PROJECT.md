@@ -33,6 +33,12 @@ Try: "touch is laggy and my taps register late", "my phone screen is cracked", "
 
 See `docs/training-integration.md`: export training pairs, fine-tune, evaluate with `--embedding-model`, then set `EMBEDDING_MODEL`.
 
+## Beyond the Display domain
+
+The 20 official sample rows are all Display complaints, even though the PDF describes four
+device domains (Battery, Display, Camera, Performance). `docs/domain-coverage.md` explains
+how the other three are tested and what a real bug that testing found and fixed looked like.
+
 ## Layout
 
     app/services/   siis_parser, key_matcher, plan_builder, plan_cache, troubleshooting_service
